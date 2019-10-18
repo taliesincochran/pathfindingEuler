@@ -14,97 +14,155 @@ var counter = 0;
 class PathNode {
     /* @constructor
      * params {string{}} used # Set of all squares allready passed through
-     * params {interger} m # Height of grid
-     * params {interger} n # Length of grid
+     * params {interger} y # Height of grid
+     * params {interger} x # Length of grid
      * params {string} current # String representing current coordinates in x:y form
      */
-    constructor(used, n, m, current) {
-        this.n = n;
-        this.m = m;
-        this.used = new Set(used);
-        this.current = current;
-        this.used.add(this.current);
-        this.depth = used.size;
-        let [xRaw,yRaw] = current.split(":");
-        console.log(this);        this.x = parseInt(xRaw);
-        this.y = parseInt(yRaw);
-        this.upCoordinate = this.x + ":" + (this.y - 1);
-        this.downCoordinate = this.x + ":" + (this.y + 1);
-        this.leftCoordinate = (this.x + 1) + ":" + this.y;
-        this.rightCoordinate = (this.x - 1) + ":" + this.y;
-        this.validMoves = this.validMoves.bind(this);
-        this.validDirections = this.validMoves();
-        console.log(this.validDirections);
-        this.up = this.validDirections.up ? new PathNode(this.used, this.n, this.m, this.upCoordinate) : null;
-        console.log('up:', this.up? true:false);
-        this.down = this.validDirections.down ? new PathNode(this.used, this.n, this.m, this.downCoordinate) : null;
-        this.right = this.validDirections.right ? new PathNode(this.used, this.n, this.m, this.rightCoordinate) : null;
-        this.left = this.validDirections.left ? new PathNode(this.used, this.n, this.m, this.leftCoordinate) : null;
-        if(this.used.size === (this.n * this.m) && this.current === ("0:" + this.m)) {
-            counter++;
-            console.log('bingo');
-        } 
-    }
-    
-    // valid move method
-    validMoves () {
-        // Returned varable.  Any test will determine if the direction remain true
-        let validMoves = {
-            up: true,
-            down:true,
-            right:true,
-            left:true
+    constructor(used, maxX, maxY, current, previousDirection) {
+        this.data = {
+            maxX : maxX,
+            maxY : maxY,
+            current: current,
+            x: parseInt(current.split(":")[0]),
+            y: parseInt(current.split(":")[1]),
+            previousDirection: previousDirection,
+            // Create a copy of the parents used set.
+            // Depth can be calculated by counting the set and adding one
+            used: new Set(used),
+            depth: used.size + 1,
+            upCoordinate: null,
+            downCoordinate: null,
+            leftCoordinate: null,
+            rightCoordinate: null
         }
-        if((this.m * this.n) === this.depth) {
-            validMoves = {
-                up: false,
-                down: false,
-                right: false,
-                left: false
+        // Add the current square to the set.
+        this.data.used.add(this.data.current);
+        this.children = {
+            up: null,
+            down: null,
+            left: null,
+            right: null
+        }
+        // bind this to class methods
+        this.validMoves = this.validMoves.bind(this);
+        this.checkInBounds = this.checkInBounds.bind(this);
+        this.checkNotUsed = this.checkNotUsed.bind(this);
+        this.data = this.validMoves(this.data);
+        
+        if(this.data.depth === (this.data.maxX * this.data.maxY) && this.data.current === ("0:" + this.data.maxY)) {
+            counter++;
+            console.log("bingo");
+        } else {
+            this.checkValidMoves(this.data);
+        }
+    }
+    checkInBounds (x, y, maxX, maxY) {
+        if(x < 0 || x > maxX) {
+            return false
+        } else if(y < 0 || y > maxY) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    checkNotUsed(x, y, used) {
+        let coordinate = x + ":" + y;
+        if(used.has(coordinate)) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+    // valid move method
+    validMoves (data) {
+        let {x, y, used, maxX, maxY, used, previousDirection, upCoordinate, downCoordinate, leftCoordinate, rightCoordinate} = data;
+        let up = (checkInBounds(x, y - 1, maxX, maxY) && this.checkNotUsed(x, y - 1, used) && previousDirection !== "down");
+        let down = (checkInBounds(x, y + 1, maxX, maxY) && this.checkNotUsed(x, y + 1, used) && previousDirection !== "up");
+        let right = (checkInBounds(x + 1, y, maxX, maxY) && this.checkNotUsed(x + 1, y, used) && previousDirection !== "left");
+        let left = (checkInBounds(x - 1, y, maxX, maxY) && this.checkNotUsed(x - 1, used) && previousDirection !== "right");
+        /* Certain moves lead to invalid paths
+         * Priorty goes in clockwise motion from the direction of the previous square
+        */
+        let directionOrder = previousDirection === "up"
+            ?
+                ["left", "up", "right"]
+                : 
+                previousDirection === "right"
+                ?
+                    ["up", "right", "down"]
+                    :
+                    previousDirection === "down"
+                    ?
+                        ["right", "down", "left"]
+                        :    
+                        ["down", "left", "right"]
+
+        function checkDirection (direction, factor) {
+            let dx = direction === "right" ? 1 
+                : direction === "left"? -1
+                    : 0;
+            let dy = direction === "down"? 1
+                : direction === "up"? -1
+                    : 0;
+            return (this.checkInBounds(x + (factor * dx), y + (factor * dy), maxX, maxY) && this.checkNotUsed(x + (factor * dx), y + (factor * dy), used))  
+        }
+
+        function checkVoid (direction) {
+            // This function is to check if we have created a void. If we have, then we should abort this path
+            let dx = direction === "right" || direction === "down" ? 1
+                : direction === "left" || direction === "up"? -1
+                    : 0;
+            let dy = direction === "down" || direction === "right"? 1
+                : direction === "up" || direction === "left"? -1
+                    : 0;
+            return (this.checkInBounds(x + dx, y + dy, maxX, maxY) && this.checkNotUsed(x + dx, y + dy, used))
+        }
+        let validDirections = new Set();
+        // Go through potential directions to chec for problems
+        for(let i = 0; i < 3; i++) {
+            // check to see if that directions adjacent square is empty and in bounds
+            let emptyAdjacentSquare = checkDirection(directionOrder[i], 1);
+            if (emptyAdjacentSquare) {
+                // if the square is empty, check the one past it
+                let unusableSquareAcrossFromEmpty = !checkDirection(directionOrder[i], 2);
+                if (unusableSquareAcrossFromEmpty && !validDirection.size) {
+                    // if the square two steps away is not empty and a direction has not been added to the set of validDirections 
+                    // the next step must be toward this direction only. 
+                    // We need to see if we are creating a void before proceeding down this path
+                    if(!checkVoid(directionOrder[i])) {
+                        // If we are not creating a void, add the direction to the set and break
+                        validDirections.add(directionOrder[i]);
+                    } 
+                    // No more directions will be considered
+                    break;
+                } else if(!unusableSquareAcrossFromEmpty) {
+                    // If there is not an unusable square two blocks away, add the direction and check the next
+                    validDirections.add(directionOrder[i]);
+                } else {
+                    // Otherwise there is an unuasable square two blocks away,
+                    // unless it is the final square, we should break
+                    if(data.depth === (data.maxX * data.maxY) - 1 ) {
+                        validDirections.add(directionOrder[i]);
+                    } 
+                    break;
+                }
             }
         }
-        if (this.used.has((this.x + 1) + ":" + this.y) || this.x + 1 > this.n) {
-            validMoves.right = false;
-        }
-        if (this.used.has((this.x - 1) + ":" + this.y) || this.x - 1 < 0) {
-            validMoves.left = false;
-        }
-        if (this.used.has(this.x + ":" + (this.y - 1)) || this.y + 1 > this.m) {
-            validMoves.up = false;
-        }
-        if (this.used.has(this.x + ":" + (this.y + 1)) || this.y - 1 < 0) {
-            validMoves.down = false;
-        }
-        
-        /* Certain moves lead to invalid paths
-        * If we can stop these paths from being populated, we will greatly reduce the number of calculations
-        * I: Invalid Move
-        * V: Valid move
-        * O: Open Square
-        * 1-9: Oreder of moves
-        * problem 1: bisected empty squares such as 1  2  3  4  5   or 1 2 3 O
-        *                                           O  I  O  O  6      O O 4 5
-        *                                           O 12  V  O  7
-        *                                           O 11 10  9  8
-        * 
-        * problem two: u shape, three squares such as: 1 O 5
-        *                                              2 3 4
-        * 
-        *    There are eight ways this shape can occure, two for each direction. 
-        *    If this shape occurs, there is only one valid direction.
-        * 
-        * Problem 3: Addjacent to corner.  If the current square is adjacent to an empty corner, it can only move to the corner
-        * 
-        * Problem 4: Line one square away from the border, if the direction is counter clockwise
-        *                                 1 2 3 4
-        *                                 O O 6 5
-        *                                 O O 7 V
-        *                                 O O I O
-        */
-       return validMoves;
+        function getCoordinates (direction) {
+            let dx = direction === "right" ? 1
+                : direction === "left" ? -1
+                    : 0;
+            let dy = direction === "down" ? 1
+                : direction === "up" ? -1
+                    : 0;
+            return (x + dx) + ":" + (y + dy);
+        } 
+        validDirections.forEach(direction => {
+            this.children[direction] = new PathNode(used, maxX, maxY, getCoordinates(direction), direction);
+            console.log(this.data.used);
+        });
     }
 }
 let usedNodes = new Set()
-usedNodes.add("0:0");
-var pathTree = new PathNode(usedNodes, mValue, nValue, "0:0", 1);
+
 console.log(counter);
